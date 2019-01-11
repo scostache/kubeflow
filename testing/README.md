@@ -47,7 +47,7 @@ CLUSTER=kubeflow-testing
 NAMESPACE=kubeflow-test-infra
 ```
 
-After starting `kubectl proxy` on `127.0.0.1:8001`, you can connect to the argo UI via the local proxy at
+After starting `kubectl proxy` on `127.0.0.1:8001`, you can connect to the Argo UI via the local proxy at
 
 ```
 http://127.0.0.1:8001/api/v1/proxy/namespaces/kubeflow-test-infra/services/argo-ui:80/
@@ -129,7 +129,7 @@ Make the service account a cluster admin
 kubectl create clusterrolebinding  ${SERVICE_ACCOUNT}-admin --clusterrole=cluster-admin  \
 		--user=${SERVICE_ACCOUNT}@${PROJECT}.iam.gserviceaccount.com
 ```
-* The service account is used to deploye Kubeflow which entails creating various roles; so it needs sufficient RBAC permission to do so.
+* The service account is used to deploy Kubeflow which entails creating various roles; so it needs sufficient RBAC permission to do so.
 
 ### Create a GitHub Token
 
@@ -163,13 +163,13 @@ The ksonnet app `test-infra` contains ksonnet configs to deploy the test infrast
 First, install the kubeflow package
 
 ```
-ks pkg install kubeflow/core
+ks pkg install kubeflow/common
 ```
 
 Then change the server ip in `test-infra/environments/prow/spec.json` to
 point to your cluster.
 
-You can deploy argo as follows (you don't need to use argo's CLI)
+You can deploy Argo as follows (you don't need to use Argo's CLI)
 
 ```
 ks apply prow -c argo
@@ -182,7 +182,7 @@ ks apply prow -c nfs-jupyter
 ```
 
 * This creates the NFS share
-* We use JupyterHub as a convenient way to access the NFS share for manual inspection of the file contents.
+* We use Jupyter as a convenient way to access the NFS share for manual inspection of the file contents.
 
 #### Troubleshooting
 

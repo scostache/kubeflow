@@ -112,7 +112,17 @@ local dagTemplates = [
       "-m",
       "testing.test_jsonnet",
       "--artifacts_dir=" + artifactsDir,
-      "--test_files_dirs=" + srcDir + "/kubeflow",
+      "--test_files_dirs=" +
+      srcDir + "/kubeflow/application/tests" + "," +
+      srcDir + "/kubeflow/common/tests" + "," +
+      srcDir + "/kubeflow/gcp/tests" + "," +
+      srcDir + "/kubeflow/jupyter/tests" + "," +
+      srcDir + "/kubeflow/examples/tests" + "," +
+      srcDir + "/kubeflow/openvino/tests" + "," +
+      srcDir + "/kubeflow/metacontroller/tests" + "," +
+      srcDir + "/kubeflow/profiles/tests" + "," +
+      srcDir + "/kubeflow/tensorboard/tests" + "," +
+      srcDir + "/kubeflow/tf-training/tests",
       "--jsonnet_path_dirs=" + srcDir + "," + srcRootDir + "/kubeflow/testing/workflows/lib/v1.7.0/",
     ]),  // jsonnet-test
 
@@ -126,7 +136,7 @@ local dagTemplates = [
       "--project=" + project,
       "--artifacts_dir=" + artifactsDir,
       "--src_dir=" + srcDir,
-      "--exclude_dirs=" + srcDir + "/bootstrap/vendor/",
+      "--exclude_dirs=" + srcDir + "/bootstrap/vendor/," + srcDir + "/releasing/releaser/lib," + srcDir + "/releasing/releaser/vendor",
     ]),  // test-jsonnet-formatting
 
     dependencies: ["checkout"],

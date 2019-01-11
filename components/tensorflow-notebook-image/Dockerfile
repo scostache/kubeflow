@@ -1,13 +1,16 @@
 # Copyright (c) Jupyter Development Team.
 # Distributed under the terms of the Modified BSD License.
 
-ARG BASE_IMAGE=ubuntu:latest
+ARG BASE_IMAGE=ubuntu:18.04@sha256:de774a3145f7ca4f0bd144c7d4ffb2931e06634f11529653b23eba85aef8e378
 
 FROM $BASE_IMAGE
 
-ARG INSTALL_TFMA=yes
 ARG TF_PACKAGE=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp36-cp36m-linux_x86_64.whl
 ARG TF_PACKAGE_PY_27=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.7.0-cp27-none-linux_x86_64.whl
+ARG TF_SERVING_VERSION=0.0.0
+ARG TFMA_VERSION
+ARG TFDV_VERSION
+ARG PIPELINE_SDK_PACKAGE=https://storage.googleapis.com/ml-pipeline/release/0.1.7/kfp.tar.gz
 
 USER root
 
@@ -20,6 +23,15 @@ ENV HOME /home/$NB_USER
 # to minimize the amount of content in $HOME
 ENV CONDA_DIR=/opt/conda
 ENV PATH $CONDA_DIR/bin:$PATH
+
+# Export args as environment variables.
+# This is solely to make them available to install.sh
+ENV TF_PACKAGE $TF_PACKAGE
+ENV TF_PACKAGE_27 $TF_PACKAGE_PY_27
+ENV TF_SERVING_VERSION $TF_PACKAGE_PY_27
+ENV TFMA_VERSION $TFMA_VERSION
+ENV TFDV_VERSION $TFDV_VERSION
+ENV PIPELINE_SDK_PACKAGE $PIPELINE_SDK_PACKAGE
 
 # Use bash instead of sh
 SHELL ["/bin/bash", "-c"]
@@ -44,6 +56,14 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
   zip \
   && apt-get clean && \
   rm -rf /var/lib/apt/lists/*
+  
+ENV DOCKER_CREDENTIAL_GCR_VERSION=1.4.3
+RUN curl -LO https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v${DOCKER_CREDENTIAL_GCR_VERSION}/docker-credential-gcr_linux_amd64-${DOCKER_CREDENTIAL_GCR_VERSION}.tar.gz && \
+    tar -zxvf docker-credential-gcr_linux_amd64-${DOCKER_CREDENTIAL_GCR_VERSION}.tar.gz && \
+    mv docker-credential-gcr /usr/local/bin/docker-credential-gcr && \
+    rm docker-credential-gcr_linux_amd64-${DOCKER_CREDENTIAL_GCR_VERSION}.tar.gz && \
+    chmod +x /usr/local/bin/docker-credential-gcr && \
+    docker-credential-gcr configure-docker
 
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     locale-gen
@@ -88,7 +108,7 @@ RUN cd /tmp && \
     conda clean -tipsy
 
 # NOTE: Beyond this point be careful of breaking out
-# or otherwise adding new layers with RUN, chown, etc. 
+# or otherwise adding new layers with RUN, chown, etc.
 # The image size can grow significantly.
 
 # Install base python3 packages
@@ -98,8 +118,12 @@ RUN pip install --upgrade pip && \
     ${TF_PACKAGE} \
     # Jupyter Stuff
     jupyter \
+    jupyter-console==6.0.0 \
     jupyterhub \
     jupyterlab \
+    git+https://github.com/kubeflow/fairing@8087c0b4e4ae5007b7a21177047e8b8412be382e \
+    # Kubeflow pipeline SDK
+    ${PIPELINE_SDK_PACKAGE} \
     # Cleanup
     && conda clean -tipsy
 
@@ -108,40 +132,9 @@ COPY --chown=jovyan:users requirements.txt /tmp
 
 # Install python2 and ipython2 kernel for jupyter notebook
 # Install tf packages which only support py2
-RUN conda create -n py2 python=2 && \
-    source activate py2 && \
-    pip install --upgrade pip && \
-    pip --no-cache-dir install \
-    ipykernel \
-    # Tensorflow
-    ${TF_PACKAGE_PY_27} \
-    # Tensorflow packages which only supports python 2
-    tensorflow-transform \
-    tensorflow-serving-api \
-    # ipykernel for python 2 jupyter notebook kernel
-    && \
-    python -m ipykernel install && \
-    # tensorflow-model-analysis is only supported for TF 1.6 and above
-    if [[ $INSTALL_TFMA == "yes" ]]; then \
-      pip install --no-cache-dir tensorflow-model-analysis && \
-      # We use --system because if we don't the config is written to the home directory
-      # and the changes are lost when we mount a PV over them.
-      jupyter nbextension install --py --system --symlink tensorflow_model_analysis && \
-      jupyter nbextension enable --py --system tensorflow_model_analysis ; \
-    fi \
-    && \
-    # Install jupyterlab-manager
-    conda install --quiet --yes \
-    # nodejs required for jupyterlab-manager
-    nodejs && \
-    jupyter labextension install @jupyter-widgets/jupyterlab-manager && \
-    # Install common packages from requirements.txt for both python2 and python3
-    pip --no-cache-dir install -r /tmp/requirements.txt && \
-    source activate py2 && \
-    pip --no-cache-dir install -r /tmp/requirements.txt && \
-    # Do chown in this layer for significant size savings
-    chown -R ${NB_USER}:users $HOME && \
-    chown -R ${NB_USER}:users $CONDA_DIR
+COPY --chown=jovyan:users install.sh /tmp/
+RUN chmod a+rx /tmp/install.sh && \
+    /tmp/install.sh
 
 # Add basic config
 COPY --chown=jovyan:users  jupyter_notebook_config.py /tmp

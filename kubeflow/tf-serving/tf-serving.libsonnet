@@ -5,12 +5,14 @@
   params:: {
     name: null,
     numGpus: 0,
+    replicas: 1,
+
     labels: {
       app: $.params.name,
     },
     modelName: $.params.name,
     modelPath: null,
-    modelStorageType: "cloud",
+    modelStorageType: "storageType",
 
     version: "v1",
     firstVersion: true,
@@ -20,14 +22,19 @@
     deployHttpProxy: false,
     httpProxyImage: "gcr.io/kubeflow-images-public/tf-model-server-http-proxy:v20180606-9dfda4f2",
 
+    deployHorizontalPodAutoscaler: false,
+    minReplicas: 2,
+    maxReplicas: 8,
+    targetAverageUtilization: 60,
+
     serviceType: "ClusterIP",
 
     // If users want to override the image then can override defaultCpuImage and/or defaultGpuImage
     // in which case the image used will still depend on whether GPUs are used or not.
     // Users can also override modelServerImage in which case the user supplied value will always be used
     // regardless of numGpus.
-    defaultCpuImage: "tensorflow/serving:1.8.0",
-    defaultGpuImage: "tensorflow/serving:1.10.0-gpu",
+    defaultCpuImage: "tensorflow/serving:1.11.1",
+    defaultGpuImage: "tensorflow/serving:1.11.1-gpu",
     modelServerImage: if $.params.numGpus == 0 then
       $.params.defaultCpuImage
     else
@@ -37,8 +44,8 @@
     // Whether or not to enable s3 parameters
     s3Enable:: false,
 
-    // Which cloud to use
-    cloud:: null,
+    // Which storageType to use
+    storageType:: null,
   },
 
   // Parametes specific to GCP.
@@ -80,6 +87,9 @@
             // Default routing rule for the first version of model.
             if $.util.toBool($.params.deployIstio) && $.util.toBool($.params.firstVersion) then
               $.parts.defaultRouteRule,
+            // Configuration for HorizontalPodAutoscaler
+            if $.util.toBool($.params.deployHorizontalPodAutoscaler) then
+              $.parts.tfHorizontalPodAutoscaler,
           ] +
           // TODO(jlewi): It would be better to structure s3 as a mixin.
           // As an example it would be great to allow S3 and GCS parameters
@@ -95,7 +105,7 @@
               $.s3parts.tfService,
               $.s3parts.tfDeployment,
             ]
-          else if $.params.cloud == "gcp" then
+          else if $.params.storageType == "gcp" then
             [
               $.gcpParts.tfService,
               $.gcpParts.tfDeployment,
@@ -214,6 +224,11 @@
       },
       spec: {
         template: {
+          // the number of replicas should be between minReplicas and maxReplicas.
+          replicas: if $.util.toBool($.params.deployHorizontalPodAutoscaler) then
+            std.max($.params.minReplicas, $.params.replicas)
+          else
+            $.params.replicas,
           metadata: $.parts.tfServingMetadata,
           spec: {
             containers: [
@@ -233,6 +248,34 @@
         },
       },
     },  // tfDeployment
+
+    tfHorizontalPodAutoscaler: {
+      apiVersion: "autoscaling/v2beta1",
+      kind: "HorizontalPodAutoscaler",
+      metadata: {
+        name: $.params.name + "-hpa",
+        namespace: $.params.namespace,
+        labels: $.params.labels,
+      },
+      spec: {
+        minReplicas: $.params.minReplicas,
+        maxReplicas: $.params.maxReplicas,
+        metrics: [
+          {
+            type: "Resource",
+            resource: {
+              name: "cpu",
+              targetAverageUtilization: $.params.targetAverageUtilization,
+            },
+          },
+        ],
+        scaleTargetRef: {
+          apiVersion: "extensions/v1beta1",
+          kind: "Deployment",
+          name: $.params.name + "-" + $.params.version,
+        },
+      },
+    },  // tfHorizontalPodAutoscaler
 
     tfService: {
       apiVersion: "v1",
@@ -339,7 +382,7 @@
   gcpParts:: $.parts {
     gcpEnv:: [
       if $.gcpParams.gcpCredentialSecretName != "" then
-        { name: "GOOGLE_APPLICATION_CREDENTIALS", value: "/secret/gcp-credentials/key.json" },
+        { name: "GOOGLE_APPLICATION_CREDENTIALS", value: "/secret/gcp-credentials/user-gcp-sa.json" },
     ],
 
     tfServingContainer: $.parts.tfServingContainer {
